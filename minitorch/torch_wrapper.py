@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 import base64
 from IPython.display import HTML
 from operator import itemgetter
+torch.manual_seed(42)
 
 
 class TorchWrapper:
@@ -178,7 +179,7 @@ class TorchWrapper:
         for inputs, labels in self.custom_dataset_config([self.trainset.x[0]], 
                                                          [self.trainset.y[0]], 
                                                          self.device, 
-                                                         self.transforms['train']):
+                                                         self.transforms['train'] if self.transforms else None):
           _ = self.net(inputs[None, :])
     except:
       raise ValueError("Test forward pass failed, check network architecture.")
@@ -290,7 +291,9 @@ class TorchWrapper:
     # TODO: This should probably make use of any transforms on unseen data as well?
     self.net.eval()
     with torch.no_grad():
-      outputs = self.net(torch.tensor(inputs).float().to(self.device)).cpu().detach()
+      if not torch.is_tensor(inputs):
+        inputs = torch.tensor(inputs)
+      outputs = self.net(inputs.float().to(self.device)).cpu().detach()
       if softmax:
         return F.softmax(outputs[0], dim=0).numpy()
       return outputs.numpy()
