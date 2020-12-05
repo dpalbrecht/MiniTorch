@@ -38,10 +38,9 @@ class TorchWrapper:
     self.custom_dataset_config = custom_dataset_config
     if transforms:
       try:
-        transforms['train']
-        transforms['validation']
+        assert isinstance(transforms, dict)
       except:
-        raise ValueError("Passed Transforms must either be None or a dictionary with 'training' and 'validation' keys for transforms.")
+        raise TypeError("Passed Transforms must either be None or a dictionary.")
     self.transforms = transforms
     self.val_size = val_size
     self.test_size = test_size/(1-val_size)
@@ -140,7 +139,7 @@ class TorchWrapper:
     self.valset = self.custom_dataset_config(self.X_val, self.y_val, self.device, 
                                                   transform=self.transforms.get('validation') if self.transforms else None)
     self.testset = self.custom_dataset_config(self.X_test, self.y_test, self.device, 
-                                                  transform=self.transforms.get('validation') if self.transforms else None)
+                                                  transform=self.transforms.get('test') if self.transforms else None)
 
     self.trainloader = torch.utils.data.DataLoader(self.trainset, batch_size=self.batch_sizes[0] if self.batch_sizes[0] != -1 else len(self.trainset),
                                                    shuffle=True, num_workers=self.num_workers[0])
@@ -287,10 +286,14 @@ class TorchWrapper:
     else:
       plt.close()
 
-  def predict(self, inputs, softmax=False):
-    # TODO: This should probably make use of any transforms on unseen data as well?
+  def predict(self, inputs, softmax=False, 
+              interence_transform=False):
+    # TODO: implement test-time augmentation. Just set transform probabilities below 1?
     self.net.eval()
     with torch.no_grad():
+      if interence_transform:
+        if (self.transforms is not None) and (self.transforms.get('inference') is not None):
+          inputs = self.transforms.get('inference')(image=np.array(inputs))['image']
       if not torch.is_tensor(inputs):
         inputs = torch.tensor(inputs)
       outputs = self.net(inputs.float().to(self.device)).cpu().detach()
