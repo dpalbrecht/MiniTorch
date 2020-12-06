@@ -1,4 +1,5 @@
 from collections import Counter
+import itertools
 import numpy as np
 from tqdm import tqdm
 from sklearn.model_selection import train_test_split
@@ -27,11 +28,14 @@ class TorchWrapper:
                transforms=None,
                val_size=0.15, test_size=0.5,
                batch_sizes=(32,32,1), num_workers=(0,0,0),
-               preprocess_data=False):
+               **kwargs):
+    self.val_size = val_size
+    self.test_size = test_size
     try:
-      assert 1-val_size-test_size > 0
+      assert 1-self.val_size-self.test_size > 0
     except:
       raise ValueError(f"'val_size' ({val_size}) + 'test_size' ({test_size}) is more than 1.")
+    self.test_size = self.test_size/(1-self.val_size)
     self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     self.input_data = input_data
     self.output_data = output_data
@@ -42,11 +46,9 @@ class TorchWrapper:
       except:
         raise TypeError("Passed Transforms must either be None or a dictionary.")
     self.transforms = transforms
-    self.val_size = val_size
-    self.test_size = test_size/(1-val_size)
     self.batch_sizes = batch_sizes
     self.num_workers = num_workers
-    if preprocess_data:
+    if kwargs.get('preprocess_data'):
       if isinstance(self.output_data[0], str):
         self.target2ind = dict(zip(set(output_data), range(len(set(output_data)))))
         self.ind2target = {v:k for k,v in self.target2ind.items()}
@@ -54,48 +56,46 @@ class TorchWrapper:
         self.ohe = True
         self.stratify = True
         self.allow_target_weights = True
-      else:
-        self.target2ind = {}
-        self.ind2target = {}
-        self.ohe = False
-        self.stratify = False
-        self.allow_target_weights = False
       self._split_data()
-      self._load_data()    
+      self._load_data()
 
-  def load_checkpoint(self, net,
-                      checkpoints_path, model_name, load_type='eval'):
+  @classmethod
+  def load_checkpoint(cls, 
+                      net, checkpoints_path, 
+                      model_name, load_type='eval'):
     checkpoint = torch.load(checkpoints_path+model_name)
     model_checkpoint = torch.load(checkpoints_path+'base_model.pt')
-    self.net = net
+    cls = cls(input_data=None, output_data=None, 
+              custom_dataset_config=None, 
+              **{'preprocess_data':False})
+    cls.net = net
     if model_checkpoint.get('target2ind') is not None:
-      self.target2ind = model_checkpoint['target2ind']
-      self.ind2target = {v:k for k,v in self.target2ind.items()}
-      self.output_data = np.array([self._one_hot_encode(label) for label in self.output_data])
-      self.ohe = True
-      self.stratify = True
-      self.allow_target_weights = True
+      cls.target2ind = model_checkpoint['target2ind']
+      cls.ind2target = {v:k for k,v in cls.target2ind.items()}
+      cls.allow_target_weights = True
     else:
-      self.ohe = False
-      self.stratify = False
-      self.allow_target_weights = False
-    self.optimizer = model_checkpoint['optimizer']
-    self.net.load_state_dict(checkpoint['model_state_dict'])
-    self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    self.net.to(self.device)
+      cls.allow_target_weights = False
+    cls.optimizer = model_checkpoint['optimizer']
+    cls.transforms = model_checkpoint['transforms']
+    cls.criterion = model_checkpoint['criterion']
+    cls.net.load_state_dict(checkpoint['model_state_dict'])
+    cls.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    cls.net.to(cls.device)
     if load_type == 'eval':
-      for parameter in self.net.parameters():
+      for parameter in cls.net.parameters():
         parameter.requires_grad = False
-      self.net.eval()
+      cls.net.eval()
     elif load_type == 'train':
-      self.net.train()
+      cls.net.train()
     else:
       raise ValueError("Please select either \'eval\' or \'train\' for load_type.")
     print('Loaded {} in {} mode.'.format(model_name, load_type))
     train_val_curve = base64.b64encode(open(checkpoints_path+'train_val_curve.png', 'rb').read()).decode('utf-8')
     display(HTML(f"""<img src="data:image/png;base64,{train_val_curve}">"""))
-    self._split_data()
-    self._load_data()
+    cls.trainloader = model_checkpoint['trainloader']
+    cls.valloader = model_checkpoint['valloader']
+    cls.testloader = model_checkpoint['testloader']
+    return cls
 
   def _one_hot_encode(self, input_data):
     one_hot_encoding = np.zeros(len(self.target2ind))
@@ -210,7 +210,12 @@ class TorchWrapper:
     if not os.path.exists(model_path):
       os.mkdir(model_path)
     torch.save({'optimizer': self.optimizer,
-                'target2ind':self.target2ind},
+                'target2ind':self.target2ind,
+                'transforms':self.transforms,
+                'trainloader':self.trainloader,
+                'valloader':self.valloader,
+                'testloader':self.testloader,
+                'criterion':self.criterion},
                model_path+'/base_model.pt')
     self.epochs = epochs
     self.training_loss = []
@@ -309,7 +314,10 @@ class TorchWrapper:
     self.micro_accuracy_dict = {t:{'count':0, 'correct':0} for t in self.target2ind}
     self.micro_hitn_dict = {t:{'count':0, 'hit':0} for t in self.target2ind}
     self.test_set_confusion_matrix = np.zeros((len(self.target2ind), len(self.target2ind)))
-    y_test_value_counts = Counter([np.argmax(t) for t in self.y_test])
+    if self.testloader.batch_size == 1:
+      y_test_value_counts = Counter([t.item() for _, t in self.testloader])
+    else:
+      y_test_value_counts = Counter(itertools.chain(*[t.cpu().numpy().flatten() for _, t in self.testloader]))
     for data_group in [['Train', self.trainloader],
                        ['Validation', self.valloader],
                        ['Test', self.testloader]]:
