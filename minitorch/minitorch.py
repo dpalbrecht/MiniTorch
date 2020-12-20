@@ -1,6 +1,7 @@
 from collections import Counter
 import itertools
 import numpy as np
+import sys
 from tqdm import tqdm
 from sklearn.model_selection import train_test_split
 import torch
@@ -20,9 +21,10 @@ from IPython.display import HTML
 from operator import itemgetter
 torch.manual_seed(42)
 
+import metrics
 
-class TorchWrapper:
-  def __init__(self, input_data, 
+class MiniTorch:
+  def __init__(self, input_data,
                output_data,
                custom_dataset_config,
                transforms=None,
@@ -48,7 +50,7 @@ class TorchWrapper:
     self.transforms = transforms
     self.batch_sizes = batch_sizes
     self.num_workers = num_workers
-    if kwargs.get('preprocess_data'):
+    if kwargs.get('preprocess_data') is not False:
       if isinstance(self.output_data[0], str):
         self.target2ind = dict(zip(set(output_data), range(len(set(output_data)))))
         self.ind2target = {v:k for k,v in self.target2ind.items()}
@@ -60,13 +62,13 @@ class TorchWrapper:
       self._load_data()
 
   @classmethod
-  def load_checkpoint(cls, 
-                      net, checkpoints_path, 
+  def load_checkpoint(cls,
+                      net, checkpoints_path,
                       model_name, load_type='eval'):
     checkpoint = torch.load(checkpoints_path+model_name)
     model_checkpoint = torch.load(checkpoints_path+'base_model.pt')
-    cls = cls(input_data=None, output_data=None, 
-              custom_dataset_config=None, 
+    cls = cls(input_data=None, output_data=None,
+              custom_dataset_config=None,
               **{'preprocess_data':False})
     cls.net = net
     if model_checkpoint.get('target2ind') is not None:
@@ -107,16 +109,16 @@ class TorchWrapper:
     """
     inds = np.array(range(len(self.input_data)))
 
-    train_inds, self.val_inds  = train_test_split(inds, 
+    train_inds, self.val_inds  = train_test_split(inds,
                                                   stratify=self.output_data if self.stratify else None,
-                                                  test_size=self.val_size, 
+                                                  test_size=self.val_size,
                                                   random_state=42)
 
-    self.train_inds, self.test_inds  = train_test_split(train_inds, 
-                                                        stratify=self.output_data[train_inds] if self.stratify else None, 
-                                                        test_size=self.test_size, 
+    self.train_inds, self.test_inds  = train_test_split(train_inds,
+                                                        stratify=self.output_data[train_inds] if self.stratify else None,
+                                                        test_size=self.test_size,
                                                         random_state=42)
-    
+
     self.X_train = self.input_data[self.train_inds]
     self.y_train = self.output_data[self.train_inds]
 
@@ -134,11 +136,11 @@ class TorchWrapper:
   def _load_data(self):
     """Load data into DataSets and DataLoaders.
     """
-    self.trainset = self.custom_dataset_config(self.X_train, self.y_train, self.device, 
+    self.trainset = self.custom_dataset_config(self.X_train, self.y_train, self.device,
                                                   transform=self.transforms.get('train') if self.transforms else None)
-    self.valset = self.custom_dataset_config(self.X_val, self.y_val, self.device, 
+    self.valset = self.custom_dataset_config(self.X_val, self.y_val, self.device,
                                                   transform=self.transforms.get('validation') if self.transforms else None)
-    self.testset = self.custom_dataset_config(self.X_test, self.y_test, self.device, 
+    self.testset = self.custom_dataset_config(self.X_test, self.y_test, self.device,
                                                   transform=self.transforms.get('test') if self.transforms else None)
 
     self.trainloader = torch.utils.data.DataLoader(self.trainset, batch_size=self.batch_sizes[0] if self.batch_sizes[0] != -1 else len(self.trainset),
@@ -148,17 +150,17 @@ class TorchWrapper:
     self.testloader = torch.utils.data.DataLoader(self.testset, batch_size=self.batch_sizes[2] if self.batch_sizes[2] != -1 else len(self.testset),
                                                   shuffle=True, num_workers=self.num_workers[2])
     try:
-      _ = [(inputs, labels) for inputs, labels in self.custom_dataset_config([self.trainset.x[0]], 
-                                                                            [self.trainset.y[0]], 
-                                                                            self.device, 
+      _ = [(inputs, labels) for inputs, labels in self.custom_dataset_config([self.trainset.x[0]],
+                                                                            [self.trainset.y[0]],
+                                                                            self.device,
                                                                             self.transforms.get('train') if self.transforms else None)]
     except:
       raise ValueError("Something went wrong in the DataLoaders.")
-    
+
     print("\nData is loaded into DataLoaders.")
 
-  def load_net(self, net, 
-               chosen_criterion, 
+  def load_net(self, net,
+               chosen_criterion,
                chosen_optimizer, chosen_optimizer_params,
                optimizer_network_parameters=None,
                weights=None):
@@ -175,9 +177,9 @@ class TorchWrapper:
     self.optimizer = chosen_optimizer(params=params, **chosen_optimizer_params)
     try:
       with torch.no_grad():
-        for inputs, labels in self.custom_dataset_config([self.trainset.x[0]], 
-                                                         [self.trainset.y[0]], 
-                                                         self.device, 
+        for inputs, labels in self.custom_dataset_config([self.trainset.x[0]],
+                                                         [self.trainset.y[0]],
+                                                         self.device,
                                                          self.transforms['train'] if self.transforms else None):
           _ = self.net(inputs[None, :])
     except:
@@ -185,15 +187,15 @@ class TorchWrapper:
 
     if self.allow_target_weights:
       if self.weights == 'inverted':
-        weights_arr = np.zeros(self.y_train[0].shape[0]) 
+        weights_arr = np.zeros(self.y_train[0].shape[0])
         for target_arr in self.y_train:
           target_ind = np.argmax(target_arr)
           weights_arr[target_ind] += 1
         weights_arr = 1/weights_arr
-        chosen_weights = torch.tensor(weights_arr, 
+        chosen_weights = torch.tensor(weights_arr,
                                       device=self.device, dtype=torch.float)
       elif self.weights == 'equal':
-        chosen_weights = torch.tensor(np.ones(self.y_train[0].shape[0]), 
+        chosen_weights = torch.tensor(np.ones(self.y_train[0].shape[0]),
                                       device=self.device, dtype=torch.float)
       else:
         raise ValueError("Please select either \'equal\' or \'inverted\' weights.")
@@ -240,10 +242,10 @@ class TorchWrapper:
         # get statistics every log_mini_batches
         running_loss += loss.item()
         if i % log_mini_batches == (log_mini_batches-1):
-          
+
           # log the running training loss
           self.training_loss.append(running_loss / log_mini_batches)
-          
+
           # log the running validation loss
           self.net.eval()
           with torch.no_grad():
@@ -257,15 +259,15 @@ class TorchWrapper:
           self.validation_loss.append(running_val_loss / len(self.valloader))
 
           self.num_minibatches.append((epoch-1) * len(self.trainloader) + i)
-          
+
           print('[%d, %5d] train_loss: %.3f | val_loss: %.3f' %
                   (epoch, i + 1, running_loss / log_mini_batches, running_val_loss / len(self.valloader)))
 
           # save training curve
           self.plot_training_curves(show=False, save=model_path+'/train_val_curve.png')
-            
+
           running_loss = 0.0
-        
+
       # save a checkpoint each epoch
       torch.save({
                   'epoch': epoch,
@@ -291,7 +293,7 @@ class TorchWrapper:
     else:
       plt.close()
 
-  def predict(self, inputs, softmax=False, 
+  def predict(self, inputs, softmax=False,
               interence_transform=False):
     # TODO: implement test-time augmentation. Just set transform probabilities below 1?
     self.net.eval()
@@ -306,84 +308,48 @@ class TorchWrapper:
         return F.softmax(outputs[0], dim=0).numpy()
       return outputs.numpy()
 
-  def evaluate(self):
+  def _instantiate_metrics(self, evaluation_metrics):
+    self.evaluation_dict = {}
+    metrics_lookup = metrics.MetricsLookup().lookup
+    for evaluation_metric in evaluation_metrics:
+      if metrics_lookup.get(evaluation_metric) is not None:
+        self.evaluation_dict[evaluation_metric] = metrics_lookup.get(evaluation_metric)(self.evaluation_data)
+
+  def _call_metrics(self, predicted=None, truth=None, 
+                    dataset_name=None, method='update'):
+    for evaluation_class in self.evaluation_dict.values():
+      if method == 'update':
+        evaluation_class.update(predicted, truth, dataset_name)
+      elif method == 'aggregate':
+        evaluation_class.aggregate()
+      elif method == 'report':
+        evaluation_class.report(dataset_name)
+      elif method == 'plot':
+        evaluation_class.plot()
+
+  # TODO: Can move this entirely into the training loop
+  def evaluate(self, evaluation_metrics):
     """Calculate accuracy on the train, validation, and testing sets.
     """
-    # TODO: This will only work for classification problems
     self.net.eval()
-    self.micro_accuracy_dict = {t:{'count':0, 'correct':0} for t in self.target2ind}
-    self.micro_hitn_dict = {t:{'count':0, 'hit':0} for t in self.target2ind}
-    self.test_set_confusion_matrix = np.zeros((len(self.target2ind), len(self.target2ind)))
-    if self.testloader.batch_size == 1:
-      y_test_value_counts = Counter([t.item() for _, t in self.testloader])
-    else:
-      y_test_value_counts = Counter(itertools.chain(*[t.cpu().numpy().flatten() for _, t in self.testloader]))
+    self.evaluation_data = {
+      'target2ind':self.target2ind,
+      'ind2target':self.ind2target,
+      'dataset_names': ['Train', 'Validation', 'Test']
+    }
+    self._instantiate_metrics(evaluation_metrics)
     for data_group in [['Train', self.trainloader],
                        ['Validation', self.valloader],
                        ['Test', self.testloader]]:
       dataset_name, data = data_group
       print(f'Evaluating {dataset_name} set...')
-      correct = 0
-      hit = 0
-      count = 0
-      for input_data, targets in tqdm(data, position=0, leave=True):
-        outputs = self.predict(input_data)
-        for output, target in zip(outputs, targets):
-          sorted_output = np.argsort(output).flatten()[::-1]
-          predicted_ind = sorted_output[0]
-          target_ind = target.item()
-          hit_at_n = np.where(sorted_output == target_ind)[0][0]
-          if dataset_name == 'Test':
-            self.test_set_confusion_matrix[target_ind][predicted_ind] += 1
-            self.micro_hitn_dict[self.ind2target[target_ind]]['hit'] += hit_at_n
-            self.micro_hitn_dict[self.ind2target[target_ind]]['count'] += 1
-          if target_ind == predicted_ind:
-            correct += 1
-            if dataset_name == 'Test':
-              self.micro_accuracy_dict[self.ind2target[target_ind]]['correct'] += 1
-          if dataset_name == 'Test':
-            self.micro_accuracy_dict[self.ind2target[target_ind]]['count'] += 1
-          count += 1
-          if count > 1:
-            hit *= (count-1)
-            hit += hit_at_n
-            hit /= count
-          else:
-            hit = hit_at_n
-      print(f"\nAverage {dataset_name} Accuracy: {100 * correct / count:.2f}%")
-      print(f"Average {dataset_name} Hit@N: {hit:.1f}\n")
+      for input_data, targets in tqdm(data, file=sys.stdout):
+        predictions = self.predict(input_data)
+        for prediction, target in zip(predictions, targets):
+          self._call_metrics(predicted=prediction, truth=target.item(), 
+                             dataset_name=dataset_name, method='update')
+      self._call_metrics(dataset_name=dataset_name, method='report')
+      print()
 
-    for count_dict in self.micro_accuracy_dict.values():
-      if count_dict['count'] > 0:
-        count_dict['accuracy'] = 100 * count_dict['correct'] / count_dict['count']
-
-    for count_dict in self.micro_hitn_dict.values():
-      if count_dict['count'] > 0:
-        count_dict['hit'] /= count_dict['count']
-
-    self.test_set_confusion_matrix_normed = deepcopy(self.test_set_confusion_matrix)
-    for n, row in enumerate(self.test_set_confusion_matrix_normed):
-      row /= y_test_value_counts[n]
-
-    figure = plt.figure(figsize=(17,15))
-    sns.heatmap(self.test_set_confusion_matrix_normed, cmap='rocket_r')
-    plt.title('Micro-Accuracy Test Set Predictions Heatmap')
-    ticks = [self.ind2target[i] for i in range(len(self.test_set_confusion_matrix_normed))]
-    plt.xticks([r+0.5 for r in range(len(self.test_set_confusion_matrix_normed))], ticks, rotation=90, size=8)
-    plt.yticks([r+0.5 for r in range(len(self.test_set_confusion_matrix_normed))], ticks, rotation=0, size=8)
-    plt.ylabel('Truth')
-    plt.xlabel('Prediction')
-    plt.show();
-
-    sorted_hit = sorted([[card, hitn_dict['hit']] for card, hitn_dict in self.micro_hitn_dict.items()], key=itemgetter(1))
-    max_hit_lim = int(np.ceil(max([hitn_dict['hit'] for hitn_dict in self.micro_hitn_dict.values()]))+1)
-    figure = plt.figure(figsize=(max(max_hit_lim, 5), 7))
-    plt.bar(range(len(sorted_hit)), [sp[1] for sp in sorted_hit])
-    plt.xticks(range(len(sorted_hit)), [sp[0] for sp in sorted_hit], rotation=90)
-    for n, group in enumerate(sorted_hit):
-      card, hit = group
-      plt.text(n, hit, f"{hit:.0f}", ha='center', va='bottom')
-    plt.title(f'Average Test Set Hit @ N by Target Class\nMax is {len(sorted_hit)}')
-    plt.xlabel('Target Class')
-    plt.ylabel('Hit @ N')
-    plt.show();
+    self._call_metrics(method='aggregate')
+    self._call_metrics(method='plot')
