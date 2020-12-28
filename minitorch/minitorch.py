@@ -226,27 +226,20 @@ class MiniTorch:
     running_loss = 0.0
     for epoch in range(1, epochs+1):
       for i, data in enumerate(self.trainloader, 0):
-
-        # get the inputs
         inputs, labels = data
-
-        # zero the parameter gradients
         self.optimizer.zero_grad()
-
-        # forward + backward + optimize
         outputs = self.net(inputs)
         loss = self.criterion(outputs, labels.flatten())
         loss.backward()
         self.optimizer.step()
-
-        # get statistics every log_mini_batches
         running_loss += loss.item()
+        
         if i % log_mini_batches == (log_mini_batches-1):
 
-          # log the running training loss
+          # training loss
           self.training_loss.append(running_loss / log_mini_batches)
 
-          # log the running validation loss
+          # validation loss
           self.net.eval()
           with torch.no_grad():
             running_val_loss = 0.0
@@ -327,9 +320,8 @@ class MiniTorch:
       elif method == 'plot':
         evaluation_class.plot()
 
-  # TODO: Can move this entirely into the training loop
   def evaluate(self, evaluation_metrics):
-    """Calculate accuracy on the train, validation, and testing sets.
+    """Evaluate on the train, validation, and testing sets.
     """
     self.net.eval()
     self.evaluation_data = {
