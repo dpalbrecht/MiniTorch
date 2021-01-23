@@ -308,9 +308,9 @@ class MiniTorch:
       if metrics_lookup.get(evaluation_metric) is not None:
         self.evaluation_dict[evaluation_metric] = metrics_lookup.get(evaluation_metric)(self.evaluation_data)
 
-  def _call_metrics(self, predicted=None, truth=None, 
+  def _call_metrics(self, kwargs, predicted=None, truth=None, 
                     dataset_name=None, method='update'):
-    for evaluation_class in self.evaluation_dict.values():
+    for metric_name, evaluation_class in self.evaluation_dict.items():
       if method == 'update':
         evaluation_class.update(predicted, truth, dataset_name)
       elif method == 'aggregate':
@@ -318,10 +318,13 @@ class MiniTorch:
       elif method == 'report':
         evaluation_class.report(dataset_name)
       elif method == 'plot':
-        evaluation_class.plot()
+        evaluation_class.plot(kwargs.get(metric_name) if kwargs.get(metric_name) else {})
 
-  def evaluate(self, evaluation_metrics):
-    """Evaluate on the train, validation, and testing sets.
+  def evaluate(self, evaluation_metrics, 
+               kwargs={
+                 'accuracy': {'annot':True}
+               }):
+    """Evaluate on the train, validation, and test sets.
     """
     self.net.eval()
     self.evaluation_data = {
@@ -338,10 +341,10 @@ class MiniTorch:
       for input_data, targets in tqdm(data, file=sys.stdout):
         predictions = self.predict(input_data)
         for prediction, target in zip(predictions, targets):
-          self._call_metrics(predicted=prediction, truth=target.item(), 
+          self._call_metrics(kwargs, predicted=prediction, truth=target.item(), 
                              dataset_name=dataset_name, method='update')
-      self._call_metrics(dataset_name=dataset_name, method='report')
+      self._call_metrics(kwargs, dataset_name=dataset_name, method='report')
       print()
 
-    self._call_metrics(method='aggregate')
-    self._call_metrics(method='plot')
+    self._call_metrics(kwargs, method='aggregate')
+    self._call_metrics(kwargs, method='plot')

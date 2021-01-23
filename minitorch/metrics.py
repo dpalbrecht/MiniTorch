@@ -43,12 +43,12 @@ class HitAtN:
         if count_dict['count'] > 0:
           count_dict['hit'] /= count_dict['count']
 
-  def plot(self):
+  def plot(self, plot_kwargs):
     sorted_hit = sorted([[card, hitn_dict['hit']] for card, hitn_dict in self.micro_hitn_dict['Test'].items()], 
                         key=lambda x: x[1])
     max_hit_lim = int(np.ceil(max([hitn_dict['hit'] for hitn_dict in self.micro_hitn_dict['Test'].values()]))+1)
     figure = plt.figure(figsize=(max(max_hit_lim, 5), 7))
-    plt.bar(range(len(sorted_hit)), [sp[1] for sp in sorted_hit])
+    plt.bar(range(len(sorted_hit)), [sp[1] for sp in sorted_hit], **plot_kwargs)
     plt.xticks(range(len(sorted_hit)), [sp[0] for sp in sorted_hit], rotation=90)
     for n, group in enumerate(sorted_hit):
       card, hit = group
@@ -82,9 +82,9 @@ class Accuracy:
       for row in self.confusion_matrix_normed_dict[dataset_name]:
         row /= row.sum()
 
-  def plot(self):
+  def plot(self, plot_kwargs):
     figure = plt.figure(figsize=(17,15))
-    sns.heatmap(self.confusion_matrix_normed_dict['Test'], cmap='rocket_r', annot=True)
+    sns.heatmap(self.confusion_matrix_normed_dict['Test'], cmap='rocket_r', **plot_kwargs)
     plt.title('Micro-Accuracy Test Set Predictions Heatmap')
     ticks = [self.evaluation_dict['ind2target'][i] for i in range(len(self.confusion_matrix_normed_dict['Test']))]
     plt.xticks([r+0.5 for r in range(len(self.confusion_matrix_normed_dict['Test']))], ticks, rotation=90, size=8)
