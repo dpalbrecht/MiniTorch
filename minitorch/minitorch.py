@@ -21,7 +21,7 @@ from IPython.display import HTML
 from operator import itemgetter
 torch.manual_seed(42)
 
-import metrics
+from . import metrics
 
 class MiniTorch:
     def __init__(self, input_data,

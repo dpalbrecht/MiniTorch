@@ -1,14 +1,9 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 from copy import deepcopy
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-
-metrics_lookup = {
-    'accuracy': Accuracy,
-    'hit@n': HitAtN
-}
 
 class Metrics(ABC):
     def __init__(self):
@@ -114,3 +109,9 @@ class Accuracy(Metrics):
         plt.ylabel('Truth')
         plt.xlabel('Prediction')
         plt.show();
+        
+        
+metrics_lookup = {
+    'accuracy': Accuracy,
+    'hit@n': HitAtN
+}
