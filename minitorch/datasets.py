@@ -19,10 +19,10 @@ class MatrixDataset(torch.utils.data.Dataset):
         x = self.x[idx]
 
         if isinstance(x, str):
-          x = Image.open(x)
+            x = Image.open(x)
 
         if self.transform is not None:
-          x = self.transform(image=np.array(x))['image']
+            x = self.transform(image=np.array(x))['image']
 
         x = np.expand_dims(x, axis=[n for n in range(3-len(x.shape))])
 
