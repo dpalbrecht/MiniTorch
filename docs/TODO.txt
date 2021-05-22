@@ -1,0 +1,3 @@
+* Implement test-time augmentation. Just set transform probabilities below 1? [MiniTorch.predict]
+* Implement learning-rate decay/scheduler [MiniTorch.predict]
+* Allow model training for regression tasks. Implement additional evaluation metrics [metrics.py]
