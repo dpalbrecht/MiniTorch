@@ -1,17 +1,38 @@
+from abc import ABC
 from copy import deepcopy
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-class MetricsLookup:
-    def __init__(self):
-        self.lookup = {
-          'accuracy': Accuracy,
-          'hit@n': HitAtN
-        }
 
-class HitAtN:
+metrics_lookup = {
+    'accuracy': Accuracy,
+    'hit@n': HitAtN
+}
+
+class Metrics(ABC):
+    def __init__(self):
+        pass
+    
+    @abstractmethod
+    def update(self):
+        pass
+    
+    @abstractmethod
+    def report(self):
+        pass
+    
+    @abstractmethod
+    def aggregate(self):
+        pass
+    
+    @abstractmethod
+    def plot(self):
+        pass
+
+class HitAtN(Metrics):
     def __init__(self, evaluation_dict):
+        super().__init__()
         self.evaluation_dict = evaluation_dict
         self.dataset_names = self.evaluation_dict['dataset_names']
         self.ind2target = self.evaluation_dict['ind2target']
@@ -58,8 +79,9 @@ class HitAtN:
         plt.ylabel('Hit @ N')
         plt.show();
 
-class Accuracy:
+class Accuracy(Metrics):
     def __init__(self, evaluation_dict):
+        super().__init__()
         self.evaluation_dict = evaluation_dict
         self.dataset_names = self.evaluation_dict['dataset_names']
         self.confusion_matrix_dict = {dataset_name:np.zeros((len(self.evaluation_dict['target2ind']), 
