@@ -31,6 +31,9 @@ class MiniTorch:
                  val_size=0.15, test_size=0.5,
                  batch_sizes=(32,32,1), num_workers=(0,0,0),
                  **kwargs):
+        """Instantiate MiniTorch.
+        """
+        # Validate validation/test splits are less than 100% of the dataset
         self.val_size = val_size
         self.test_size = test_size
         try:
@@ -38,6 +41,8 @@ class MiniTorch:
         except:
             raise ValueError(f"'val_size' ({val_size}) + 'test_size' ({test_size}) is more than 1.")
         self.test_size = self.test_size/(1-self.val_size)
+        
+        # Bind variables to the class
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.input_data = input_data
         self.output_data = output_data
@@ -50,12 +55,17 @@ class MiniTorch:
         self.transforms = transforms
         self.batch_sizes = batch_sizes
         self.num_workers = num_workers
+        
+        # Preprocess data if 'preprocess_data' parameter is not set to False
+        # One-hot encode string dependent variables
+        # Split into train/val/test sets
+        # Load data into DataLoaders
+        self.target2ind = None
         if kwargs.get('preprocess_data') is not False:
             if isinstance(self.output_data[0], str):
                 self.target2ind = dict(zip(set(output_data), range(len(set(output_data)))))
                 self.ind2target = {v:k for k,v in self.target2ind.items()}
                 self.output_data = np.array([self._one_hot_encode(label) for label in self.output_data])
-                self.ohe = True
                 self.stratify = True
                 self.allow_target_weights = True
             self._split_data()
@@ -65,6 +75,8 @@ class MiniTorch:
     def load_checkpoint(cls,
                         net, checkpoints_path,
                         model_name, load_type='eval'):
+        """Load a model checkpoint.
+        """
         checkpoint = torch.load(checkpoints_path+model_name)
         model_checkpoint = torch.load(checkpoints_path+'base_model.pt')
         cls = cls(input_data=None, output_data=None,
@@ -100,6 +112,8 @@ class MiniTorch:
         return cls
 
     def _one_hot_encode(self, input_data):
+        """One-hot encode dependent variable if it's a string.
+        """
         one_hot_encoding = np.zeros(len(self.target2ind))
         one_hot_encoding[self.target2ind[input_data]] = 1
         return one_hot_encoding
@@ -205,11 +219,10 @@ class MiniTorch:
             self.criterion = chosen_criterion(weight=chosen_weights)
 
         print("\nNetwork is loaded.\n")
-
-    def train(self, epochs, log_mini_batches=2000,
-              models_dir='/content/model_checkpoints'):
-        self.net.train()
-        model_path = models_dir+datetime.utcnow().strftime('/%Y%m%dT%H%M%S_models')
+        
+    def _save_model_artifacts(self, models_dir, model_path):
+        """Save model artifacts before training begins.
+        """
         if not os.path.exists(models_dir):
             os.mkdir(models_dir)
         if not os.path.exists(model_path):
@@ -222,6 +235,24 @@ class MiniTorch:
                     'testloader':self.testloader,
                     'criterion':self.criterion},
                    model_path+'/base_model.pt')
+        
+    def _save_model_checkpoint(self, epoch, model_path):
+        """Save a model checkpoint at each epoch.
+        """
+        torch.save({
+            'epoch': epoch,
+            'model_state_dict': self.net.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict()
+        }, model_path+'/epoch{}_model.pt'.format(epoch))
+
+    def train(self, epochs, log_mini_batches=2000,
+              models_dir='/content/model_checkpoints'):
+        """Train the network.
+        """
+        # TODO: Implement learning-rate decay/scheduler
+        self.net.train()
+        model_path = models_dir+datetime.utcnow().strftime('/%Y%m%dT%H%M%S_models')
+        self._save_model_artifacts(models_dir, model_path)
         self.epochs = epochs
         self.training_loss = []
         self.num_minibatches = []
@@ -264,17 +295,14 @@ class MiniTorch:
 
                     running_loss = 0.0
 
-          # save a checkpoint each epoch
-          torch.save({
-                      'epoch': epoch,
-                      'model_state_dict': self.net.state_dict(),
-                      'optimizer_state_dict': self.optimizer.state_dict()
-                      }, model_path+'/epoch{}_model.pt'.format(epoch))
+            self._save_model_checkpoint(epoch, model_path)
 
         self.plot_training_curves()
         print('Finished Training')
 
     def plot_training_curves(self, show=True, save=None):
+        """Plot training curves.
+        """
         fig = plt.figure()
         plt.plot(self.num_minibatches, self.training_loss, label='Training')
         plt.plot(self.num_minibatches, self.validation_loss, label='Validation')
@@ -291,7 +319,8 @@ class MiniTorch:
 
     def predict(self, inputs, softmax=False,
                 interence_transform=False):
-        # TODO: implement test-time augmentation. Just set transform probabilities below 1?
+        """Run an inference step.
+        """
         self.net.eval()
         with torch.no_grad():
             if interence_transform:
@@ -305,14 +334,17 @@ class MiniTorch:
             return outputs.numpy()
 
     def _instantiate_metrics(self, evaluation_metrics):
+        """Create metrics dictionary for evaluation.
+        """
         self.evaluation_dict = {}
-        metrics_lookup = metrics.MetricsLookup().lookup
         for evaluation_metric in evaluation_metrics:
-            if metrics_lookup.get(evaluation_metric) is not None:
-                self.evaluation_dict[evaluation_metric] = metrics_lookup.get(evaluation_metric)(self.evaluation_data)
+            if metrics.metrics_lookup.get(evaluation_metric) is not None:
+                self.evaluation_dict[evaluation_metric] = metrics.metrics_lookup.get(evaluation_metric)(self.evaluation_data)
 
     def _call_metrics(self, kwargs, predicted=None, truth=None, 
                       dataset_name=None, method='update'):
+        """Call metrics methods: update, aggregate, report, and plot.
+        """
         for metric_name, evaluation_class in self.evaluation_dict.items():
             if method == 'update':
                 evaluation_class.update(predicted, truth, dataset_name)
