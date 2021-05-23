@@ -249,7 +249,6 @@ class MiniTorch:
               models_dir='/content/model_checkpoints'):
         """Train the network.
         """
-        # TODO: Implement learning-rate decay/scheduler
         self.net.train()
         model_path = models_dir+datetime.utcnow().strftime('/%Y%m%dT%H%M%S_models')
         self._save_model_artifacts(models_dir, model_path)
