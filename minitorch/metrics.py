@@ -89,15 +89,18 @@ class Accuracy(Metrics):
         self.confusion_matrix_dict[dataset_name][truth_ind][predicted_ind] += 1
 
     def report(self, dataset_name):
-        accuracy = (self.confusion_matrix_dict[dataset_name].diagonal().sum() / self.confusion_matrix_dict[dataset_name].sum(axis=1).sum()) * 100
-        print(f'{dataset_name} Accuracy: {accuracy:.2f}%')
+        self.accuracy = (self.confusion_matrix_dict[dataset_name].diagonal().sum() \
+                         / self.confusion_matrix_dict[dataset_name].sum(axis=1).sum()) * 100
+        print(f'{dataset_name} Accuracy: {self.accuracy:.2f}%')
 
     def aggregate(self):
         self.confusion_matrix_normed_dict = {}
         for dataset_name in self.dataset_names:
             self.confusion_matrix_normed_dict[dataset_name] = deepcopy(self.confusion_matrix_dict[dataset_name])
             for row in self.confusion_matrix_normed_dict[dataset_name]:
-                row /= row.sum()
+                row_sum = row.sum()
+                if row_sum > 0:
+                    row /= row.sum()
 
     def plot(self, plot_kwargs):
         figure = plt.figure(figsize=(17,15))

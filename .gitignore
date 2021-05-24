@@ -6,3 +6,5 @@ Github_Handler.ipynb
 */*.pyc
 */__pycache__
 */.pytest_cache
+.pytest_cache/
+env_setup.py

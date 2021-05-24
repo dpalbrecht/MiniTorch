@@ -60,7 +60,7 @@ class MiniTorch:
         # One-hot encode string dependent variables
         # Split into train/val/test sets
         # Load data into DataLoaders
-        self.target2ind = None
+        self.target2ind, self.ind2target = None, None
         if kwargs.get('preprocess_data') is not False:
             if isinstance(self.output_data[0], str):
                 self.target2ind = dict(zip(set(output_data), range(len(set(output_data)))))
@@ -338,7 +338,13 @@ class MiniTorch:
         self.evaluation_dict = {}
         for evaluation_metric in evaluation_metrics:
             if metrics.metrics_lookup.get(evaluation_metric) is not None:
-                self.evaluation_dict[evaluation_metric] = metrics.metrics_lookup.get(evaluation_metric)(self.evaluation_data)
+                self.evaluation_dict[evaluation_metric] = metrics.metrics_lookup.get(evaluation_metric)(
+                    {
+                        'target2ind':self.target2ind,
+                        'ind2target':self.ind2target,
+                        'dataset_names': ['Train', 'Validation', 'Test']
+                    }
+                )
 
     def _call_metrics(self, kwargs, predicted=None, truth=None, 
                       dataset_name=None, method='update'):
@@ -361,11 +367,6 @@ class MiniTorch:
         """Evaluate on the train, validation, and test sets.
         """
         self.net.eval()
-        self.evaluation_data = {
-            'target2ind':self.target2ind,
-            'ind2target':self.ind2target,
-            'dataset_names': ['Train', 'Validation', 'Test']
-        }
         self._instantiate_metrics(evaluation_metrics)
         for data_group in [['Train', self.trainloader],
                            ['Validation', self.valloader],

@@ -4,19 +4,17 @@ sys.path.append('..')
 import shutil
 from minitorch.minitorch import MiniTorch
 from minitorch import datasets
-import subprocess
-pytest_version = subprocess.check_output(['pip', 'show', 'pytest']).decode().split()[3]
-if pytest_version != '6.2.4.':
-    subprocess.check_call(['pip', 'install', 'pytest==6.2.4'])
 import pytest
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
+
 # TODO: Test shapes of datasets, etc.
 def test_image_classifier():
-    # Test 2D (flat) image classifier instantiation, loading, training, and evaluation
+    """Test 2D (flat) image classifier instantiation, loading, training, and evaluation.
+    """
     
     # Instantiate MiniTorch
     num_classes = 2
