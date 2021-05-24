@@ -2,7 +2,6 @@ import os
 import sys
 sys.path.append('..')
 from minitorch import metrics
-import subprocess
 import pytest
 import numpy as np
 
